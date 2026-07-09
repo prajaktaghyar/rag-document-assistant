@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Document Analyzer — RAG + Grok + Streamlit
 
 Upload documents of (almost) any file type, ask questions in a chat interface,
@@ -102,3 +103,7 @@ rag_app/
   reduce the total chunk count.
 - Swap the embedding model in `VectorStore(embedding_model_name=...)` for a
   larger/more accurate one if needed (trade-off: slower indexing).
+=======
+# rag-document-assistant
+A Streamlit RAG application that indexes documents into vector embeddings and answers natural-language questions using Grok, with source-grounded retrieval and chat memory.
+>>>>>>> 34414ba3e80588dc9c4d19294f31b6940edb1896
