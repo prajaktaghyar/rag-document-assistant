@@ -11,6 +11,14 @@ from rag.vector_store import VectorStore
 
 load_dotenv()
 
+# Support Streamlit Cloud's secrets manager in addition to local .env files.
+# Locally: GROK_API_KEY comes from .env via load_dotenv() above.
+# On Streamlit Cloud: set it in the app's Settings -> Secrets as
+#   GROK_API_KEY = "your_key_here"
+# and it will be picked up here and exposed via os.environ as before.
+if "GROK_API_KEY" in st.secrets:
+    os.environ["GROK_API_KEY"] = st.secrets["GROK_API_KEY"]
+
 st.set_page_config(
     page_title="Document Analyzer (RAG)",
     page_icon="📄",
