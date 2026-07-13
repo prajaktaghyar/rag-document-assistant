@@ -28,6 +28,14 @@ st.set_page_config(
 CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", 1000))
 CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", 150))
 DEFAULT_TOP_K = int(os.environ.get("TOP_K", 5))
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+
+
+@st.cache_resource(show_spinner="Loading embedding model (first run can take 1–2 min on Render)...")
+def _cached_embedding_model(model_name: str):
+    from rag.embeddings import load_embedding_model
+
+    return load_embedding_model(model_name)
 
 
 # --------------------------------------------------------------------------
@@ -223,7 +231,7 @@ st.markdown(
 # Session state
 # --------------------------------------------------------------------------
 if "vector_store" not in st.session_state:
-    st.session_state.vector_store = VectorStore()
+    st.session_state.vector_store = VectorStore(embedding_model_name=EMBEDDING_MODEL)
 if "processed_files" not in st.session_state:
     st.session_state.processed_files = []  # list of dicts: filename, chars, warning
 if "chat_history" not in st.session_state:
@@ -272,14 +280,25 @@ with st.sidebar:
             if not documents:
                 st.error("No extractable text was found in the uploaded file(s).")
             else:
-                with st.spinner("Embedding and indexing chunks..."):
-                    n_chunks = st.session_state.vector_store.build(
-                        documents, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP
+                try:
+                    with st.spinner("Loading embedding model..."):
+                        st.session_state.vector_store.set_model(_cached_embedding_model(EMBEDDING_MODEL))
+                    with st.spinner(f"Embedding and indexing {len(documents)} file(s)..."):
+                        n_chunks = st.session_state.vector_store.build(
+                            documents, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    st.error(
+                        "Embedding/indexing failed. On Render free tier, the app often runs out "
+                        "of memory loading sentence-transformers. Upgrade to **Starter (2 GB RAM)** "
+                        "and use the build command from `render.yaml` to pre-download the model.\n\n"
+                        f"**Error:** `{type(exc).__name__}: {exc}`"
                     )
-                st.session_state.processed_files = processed_meta
-                st.session_state.chat_history = []
-                st.success(f"Indexed {len(documents)} file(s) into {n_chunks} chunks.")
-                st.balloons()
+                else:
+                    st.session_state.processed_files = processed_meta
+                    st.session_state.chat_history = []
+                    st.success(f"Indexed {len(documents)} file(s) into {n_chunks} chunks.")
+                    st.balloons()
 
     if st.session_state.processed_files:
         st.divider()
@@ -300,6 +319,17 @@ with st.sidebar:
             )
 
     st.divider()
+    if st.session_state.vector_store._model is not None:
+        st.markdown(
+            f'<span class="status-pill status-ok">🟢 Embedding model loaded ({EMBEDDING_MODEL})</span>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<span class="status-pill status-ok">🟡 Embedding model loads on first index build</span>',
+            unsafe_allow_html=True,
+        )
+
     api_key_present = bool(os.environ.get("GROK_API_KEY"))
     if api_key_present:
         st.markdown('<span class="status-pill status-ok">🟢 GROK_API_KEY found</span>', unsafe_allow_html=True)
@@ -331,12 +361,7 @@ st.markdown(
 )
 
 n_files = len(st.session_state.processed_files)
-n_chunks = getattr(st.session_state.vector_store, "num_chunks", None)
-if n_chunks is None:
-    try:
-        n_chunks = len(st.session_state.vector_store.chunks)  # best-effort fallback
-    except Exception:
-        n_chunks = 0
+n_chunks = st.session_state.vector_store.num_chunks
 n_questions = sum(1 for t in st.session_state.chat_history if t["role"] == "user")
 
 col1, col2, col3, col4 = st.columns(4)

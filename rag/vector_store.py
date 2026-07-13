@@ -12,6 +12,7 @@ the pipeline fast, free, and independent of the chat model.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -118,28 +119,41 @@ def split_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 150) -> l
 class VectorStore:
     """In-memory FAISS-backed store. Rebuilt fresh each Streamlit session."""
 
-    def __init__(self, embedding_model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, embedding_model_name: str = "all-MiniLM-L6-v2", model=None):
         self._embedding_model_name = embedding_model_name
-        self._model = None  # lazy-loaded, sentence-transformers import is heavy
+        self._model = model
         self.index = None
         self.chunks: list[Chunk] = []
 
+    def set_model(self, model) -> None:
+        self._model = model
+
     def _get_model(self):
         if self._model is None:
-            from sentence_transformers import SentenceTransformer
+            from rag.embeddings import load_embedding_model
 
-            self._model = SentenceTransformer(self._embedding_model_name)
+            self._model = load_embedding_model(self._embedding_model_name)
         return self._model
 
     def _embed(self, texts: list[str]) -> np.ndarray:
+        if not texts:
+            return np.zeros((0, 0), dtype="float32")
         model = self._get_model()
-        embeddings = model.encode(
-            texts,
-            batch_size=32,
-            show_progress_bar=False,
-            convert_to_numpy=True,
-            normalize_embeddings=True,  # so inner product == cosine similarity
-        )
+        batch_size = int(os.environ.get("EMBED_BATCH_SIZE", "16"))
+        try:
+            embeddings = model.encode(
+                texts,
+                batch_size=batch_size,
+                show_progress_bar=False,
+                convert_to_numpy=True,
+                normalize_embeddings=True,  # so inner product == cosine similarity
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                "Embedding failed. On Render, use at least 2 GB RAM and pre-download "
+                "the model in the build step. Original error: "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
         return embeddings.astype("float32")
 
     def build(self, documents: dict[str, str], chunk_size: int = 1000, chunk_overlap: int = 150) -> int:
@@ -178,6 +192,10 @@ class VectorStore:
                 continue
             results.append(RetrievedChunk(chunk=self.chunks[idx], score=float(score)))
         return results
+
+    @property
+    def num_chunks(self) -> int:
+        return len(self.chunks)
 
     @property
     def is_ready(self) -> bool:
