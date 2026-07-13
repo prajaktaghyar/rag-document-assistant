@@ -8,17 +8,16 @@ from dotenv import load_dotenv
 from rag.llm_client import GrokClientError, answer_question
 from rag.loaders import load_document
 from rag.vector_store import VectorStore
+from openai import OpenAI
 
 load_dotenv()
 
-# Support Streamlit Cloud's secrets manager in addition to local .env files.
-# Locally: GROK_API_KEY comes from .env via load_dotenv() above.
-# On Streamlit Cloud: set it in the app's Settings -> Secrets as
-#   GROK_API_KEY = "your_key_here"
-# and it will be picked up here and exposed via os.environ as before.
-if "GROK_API_KEY" in st.secrets:
-    os.environ["GROK_API_KEY"] = st.secrets["GROK_API_KEY"]
+GROK_API_KEY = os.getenv("GROK_API_KEY")
 
+client = OpenAI(
+    api_key=GROK_API_KEY,
+    base_url="https://api.x.ai/v1"
+)
 st.set_page_config(
     page_title="Document Analyzer (RAG)",
     page_icon="📄",
